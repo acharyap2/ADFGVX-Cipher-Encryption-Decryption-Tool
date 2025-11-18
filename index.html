@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ADFGVX Cipher</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+  :root{
+    --page:#ffffff;            /* white page */
+    --ink:#0b1b3a;             /* deep navy text */
+    --muted:#3c4d7a;           /* muted navy */
+    --panel:#0a6f4e;           /* royal green */
+    --panel-2:#0f8a61;         /* lighter royal green */
+    --gold:#f2ce61;            /* gold (light) */
+    --btn:#ffd76e;             /* soft gold */
+    --btn-2:#ffea9c;           /* lighter gold */
+    --field:#f6f8ff;           /* near-white for fields */
+    --field-border:#c8d2ff;    /* pale royal border */
+  }
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  }
+  .wrap{max-width:1200px; margin:32px auto; border-radius:18px; overflow:hidden; box-shadow:0 24px 60px rgba(11,27,58,.08), 0 4px 20px rgba(11,27,58,.06);} 
+  header{
+    background:linear-gradient(90deg,var(--panel),var(--panel-2)); color:white; padding:22px 28px; text-align:center;
+    border-bottom:4px solid var(--gold);
+  }
+  header h1{margin:0; letter-spacing:.6px}
+
+  /* LAYOUT */
+  .controls{
+    background:white; padding:18px 22px 22px; display:grid; grid-template-columns: 1fr 360px 1fr; gap:18px; align-items:stretch;
+    border:1px solid #e8ecff; border-top:none;
+  }
+  .pane{background:#ffffff; border:1px solid #e3e9ff; border-radius:14px; padding:12px; display:flex; flex-direction:column;}
+  .pane h3{margin:4px 0 8px; font-size:18px; color:var(--ink)}
+  textarea, input{
+    width:100%; border:1px solid var(--field-border); background:var(--field); color:var(--ink);
+    border-radius:12px; padding:12px; outline:none; box-shadow: inset 0 1px 0 rgba(19,54,196,.04);
+    box-sizing: border-box; margin:0;
+  }
+  textarea{ flex:1; min-height:62vh; resize:vertical; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .mid{ background:#ffffff; border:1px solid #e3e9ff; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:12px; align-items:stretch; }
+  .label{font-weight:800; color:var(--muted); font-size:14px}
+  .btn{ width:100%; background:linear-gradient(180deg,var(--btn),var(--btn-2)); border:1px solid #f6d883; color:#4a3a00; border-radius:12px; padding:12px; font-weight:900; letter-spacing:.2px; cursor:pointer; }
+  .btn:hover{ filter:brightness(1.03); }
+  .foot{ text-align:center; color:var(--muted); font-size:12px; padding:14px 16px 20px; background:#ffffff; border:1px solid #e8ecff; border-top:none; }
+
+  @media (max-width: 980px){
+    .controls{ grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>ADFGVX CIPHER</h1>
+    </header>
+
+    <section class="controls">
+      <!-- Left: Plaintext -->
+      <div class="pane">
+        <h3>Plaintext</h3>
+        <textarea id="plain" placeholder="Type normal text (A–Z, 0–9 kept; others removed)"></textarea>
+      </div>
+
+      <!-- Middle: Keys + Buttons (longer) -->
+      <div class="mid">
+        <div class="label">Square Keyword / Alphabet</div>
+        <input id="squareKey" style="font-size:13px" placeholder="Keyword or full 36 chars (A–Z0–9)" />
+        <div class="label">Transposition Key</div>
+        <input id="transKey" placeholder="e.g., CIPHER" />
+        <div id="msg" style="display:none; border:1px solid #ffb6b6; background:#fff2f2; color:#8b0000; border-radius:10px; padding:10px; font-size:13px;"></div>
+        <button id="enc" class="btn">Encrypt →</button>
+        <button id="dec" class="btn">← Decrypt</button>
+        <button id="clear" class="btn" style="background:linear-gradient(180deg,#ffffff,#f6f8ff); color:#0b1b3a; border-color:#e3e9ff;">Clear</button>
+      </div>
+
+      <!-- Right: Ciphertext -->
+      <div class="pane">
+        <h3>Ciphertext</h3>
+        <textarea id="cipher" placeholder="ADFGVX letters only when decrypting"></textarea>
+      </div>
+    </section>
+
+    <div class="foot">© 2025 • Designed &amp; Developed by Pradip Acharya for educational use • This tool works locally and stores no data.</div>
+  </div>
+
+<script>
+  const LABELS=["A","D","F","G","V","X"]; const ALPHA36="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const $=id=>document.getElementById(id);
+
+  function cleanKey(s){return (s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+  function normalizePlain(s){s=(s||'').toUpperCase();return [...s].filter(ch=>ALPHA36.includes(ch)).join('');}
+
+  function buildSquare(k){
+    k=cleanKey(k);
+    if(k.length===36 && new Set(k).size===36) return k;
+    const seen=new Set(); let out="";
+    for(const ch of k){ if(ALPHA36.includes(ch) && !seen.has(ch)){ out+=ch; seen.add(ch);} }
+    for(const ch of ALPHA36){ if(!seen.has(ch)){ out+=ch; seen.add(ch);} }
+    return out;
+  }
+  function getSquareForUse(){
+    const raw = $('squareKey').value; return buildSquare(raw);
+  }
+  function maps(square){
+    const c2p=new Map(), p2c=new Map();
+    for(let i=0;i<36;i++){
+      const ch=square[i];
+      const r=Math.floor(i/6), c=i%6;
+      const pair=LABELS[r]+LABELS[c];
+      c2p.set(ch,pair);
+      p2c.set(pair,ch);
+    }
+    return {c2p,p2c};
+  }
+  function orderMap(key){
+    key=cleanKey(key);
+    const arr=[...key].map((ch,i)=>({ch,i})).sort(
+      (a,b)=>a.ch===b.ch?a.i-b.i:(a.ch<b.ch?-1:1)
+    );
+    const m=new Map(); arr.forEach((o,r)=>m.set(o.i,r)); return m;
+  }
+  function encTrans(text,key){
+    key=cleanKey(key); if(!key) throw new Error('Transposition key required');
+    const n=key.length; const ord=orderMap(key);
+    const cols=Array.from({length:n},()=>"");
+    for(let i=0;i<text.length;i++) cols[i%n]+=text[i];
+    const inv=new Map(); for(const [o,r] of ord) inv.set(r,o);
+    let out=""; for(let r=0;r<n;r++) out+=cols[inv.get(r)];
+    return out;
+  }
+  function decTrans(text,key){
+    key=cleanKey(key); if(!key) throw new Error('Transposition key required');
+    const n=key.length; const ord=orderMap(key);
+    const inv=new Map(); for(const [o,r] of ord) inv.set(r,o);
+    const total=text.length, base=Math.floor(total/n), extra=total%n;
+    const lens=Array.from({length:n},(_,i)=>base+(i<extra?1:0));
+    const cols=Array.from({length:n},()=>"");
+    let pos=0;
+    for(let r=0;r<n;r++){
+      const o=inv.get(r), L=lens[o];
+      cols[o]=text.slice(pos,pos+L); pos+=L;
+    }
+    let out=""; const rows=Math.ceil(total/n);
+    for(let rr=0; rr<rows; rr++){
+      for(let c=0;c<n;c++){
+        const col=cols[c];
+        if(rr<col.length) out+=col[rr];
+      }
+    }
+    return out;
+  }
+  function encrypt(pt){
+    const square=getSquareForUse();
+    const {c2p}=maps(square);
+    const norm=normalizePlain(pt);
+    let frac="";
+    for(const ch of norm){
+      const p=c2p.get(ch);
+      if(!p) throw new Error('Square missing symbol: '+ch);
+      frac+=p;
+    }
+    return encTrans(frac,$('transKey').value);
+  }
+  function decrypt(ct){
+    const square=getSquareForUse();
+    const {p2c}=maps(square);
+    const clean=(ct||'').toUpperCase().replace(/[^ADFGVX]/g,'');
+    const frac=decTrans(clean,$('transKey').value);
+    if(frac.length%2!==0) throw new Error('Odd digraph length. Check keys/text.');
+    let out="";
+    for(let i=0;i<frac.length;i+=2){
+      const ch=p2c.get(frac.slice(i,i+2));
+      if(!ch) throw new Error('Invalid digraph. Check square/key.');
+      out+=ch;
+    }
+    return out;
+  }
+
+  // Buttons
+  $('enc').addEventListener('click', ()=>{
+    try{ $('cipher').value=encrypt($('plain').value);}
+    catch(e){ alert(e.message);}
+  });
+  $('dec').addEventListener('click', ()=>{
+    try{ $('plain').value=decrypt($('cipher').value);}
+    catch(e){ alert(e.message);}
+  });
+  $('clear').addEventListener('click', ()=>{
+    $('plain').value='';
+    $('cipher').value='';
+    const m=$('msg'); m.style.display='none'; m.textContent='';
+  });
+
+  // Defaults + prevent duplicates in squareKey
+  document.addEventListener('DOMContentLoaded', ()=>{
+    $('squareKey').value='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $('transKey').value='';
+    const sq = $('squareKey');
+    sq.addEventListener('input', ()=>{
+      let raw = sq.value.toUpperCase();
+      let seen = new Set();
+      let out = "";
+      for (const ch of raw){
+        if (ALPHA36.includes(ch) && !seen.has(ch)){
+          seen.add(ch);
+          out += ch;
+        }
+      }
+      sq.value = out;
+    });
+  });
+</script>
+</body>
+</html>
